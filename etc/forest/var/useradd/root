@@ -1,0 +1,31 @@
+# Custom script to run to create a user
+
+[ "$1" != "" ] || exit 1
+
+HOMEPREFIX=/home
+
+UMIN=$(user-forest freeid)
+forest --localhost sudo useradd -m -d $HOMEPREFIX/$1 -s /bin/bash $1 -K UID_MIN=${UMIN} -K UID_MAX=${UMIN} -K GID_MIN=${UMIN} -K GID_MAX=${UMIN}
+forest -i sudo useradd -d $HOMEPREFIX/$1 -s /bin/bash $1 -K UID_MIN=${UMIN} -K UID_MAX=${UMIN} -K GID_MIN=${UMIN} -K GID_MAX=${UMIN}
+
+whoami
+  
+echo Running forest install
+bash ~/.forest/install
+
+forest -i sudo groupadd forest-user
+forest -i sudo usermod -a -G forest-user $1
+
+echo Running forest install
+bash ~/.forest/install
+
+pwd=$(openssl rand -base64 16)
+echo Password: $pwd
+echo -e "#expect#assword:\n$pwd\n#expect#assword:\n$pwd\nexit\nexit\nexit\n" | forest -ie sudo passwd "'""$1""'"
+
+echo forest --localhost sudo /etc/vncserver/add-user.sh "'""$1""'"
+forest --localhost sudo /etc/vncserver/add-user.sh "'""$1""'"
+
+echo Running forest install
+bash /home/nessie/.forest/install
+

@@ -1,0 +1,3 @@
+# alternative node configuration names (packages) can hold different machines
+# For example this would defina a package called 'master' including only a single node:
+# machine-01

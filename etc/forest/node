@@ -1,0 +1,5 @@
+# one line for each cluster node with the hostname
+# example:
+# machine-01
+# machine-02
+# machine-03

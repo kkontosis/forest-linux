@@ -1,0 +1,7 @@
+_user-forest()
+{
+	local cur=${COMP_WORDS[COMP_CWORD]}
+	COMPREPLY=( $(compgen -W "$(ls /etc/forest/scripts)" -- $cur) )
+}
+complete -F _user-forest user-forest
+

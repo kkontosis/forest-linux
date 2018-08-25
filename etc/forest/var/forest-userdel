@@ -1,0 +1,10 @@
+if [ "$1" == "" ]
+then
+exit
+fi
+
+sudo su $1 -c /etc/forest/var/userdel/current
+bash /etc/forest/var/userdel/root $1
+
+echo done
+

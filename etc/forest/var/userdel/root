@@ -1,0 +1,11 @@
+# Custom script to run to delete a user
+
+[ "$1" != "" ] || exit 1
+
+forest sudo userdel -f "$1"
+forest -i sudo userdel -f "$1"
+forest --localhost sudo rm -rf "$(eval echo ~"$1")"
+
+echo Running forest install
+bash /home/nessie/.forest/install
+
