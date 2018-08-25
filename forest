@@ -1,0 +1,938 @@
+#!/bin/bash
+
+debug=
+debug2=
+
+#shopt -s expand_aliases
+#alias 'argnext=if [ "$spar" == "-" ]; then shift; fi';
+cmdline=( $@ )
+cmdlinep="$@"
+
+#param gathering
+package="node"
+prm_readline=
+prm_smartout=1
+prm_mode2=1
+
+spar="-"
+
+while [ $# -gt 0 -a "${1:0:1}" == "-" ]
+do
+
+  if [ "$spar" == "-" ]; then npar="$1"; else npar="$spar"; fi
+  spar="-"
+  if [ "${npar:0:1}" == "-" -a "${npar:0:2}" != "--" -a "$npar" != "-" ]
+  then
+	spar="-${npar:2}"
+	npar=${npar:0:2}
+  fi
+
+  if [ "$npar" == "--help" ]; then 
+	echo "forest-linux, Copyright (c) Kimon M. Kontosis 2013-2014, license GPL v.3.0+"
+	echo "forest runs commands across all nodes of a computer cluster"
+	echo "Usage: forest [-ritlsXez] [OPTION...] [COMMAND]..."
+	echo ""
+	help=1; 
+  fi
+
+##
+  test $help && echo "Single character switches (may be combined):"
+
+  if [ "$npar" == "-r" -o "$npar" == "--rest" ]; then
+	prm_rest=1
+  fi #--rest
+  test $help && echo "    -r, --rest:            do for rest (exclude local host)"
+
+  if [ "$npar" == "-i" -o "$npar" == "--install-auto" ]; then
+	if ! test "$prm_entry"; then
+		prm_install=1
+		prm_autogen=1
+	else
+		prm_expect=1
+		prm_filter=1
+		prm_readline=""
+		opt_tty="-t -t"
+	fi
+  fi #--install-auto
+  test $help && echo "    -I, --install-auto:    same as -i --autogen"
+ 
+  if [ "$npar" == "-i" -o "$npar" == "--install" ]; then
+	if ! test "$prm_entry"; then
+		prm_install=1
+	fi
+  fi #--install
+  test $help && echo "    -i, --install:         run and register command for installation"
+ 
+  if [ "$npar" == "-t" -o "$npar" == "--term" ]; then
+	prm_bash=1
+	prm_readline=1
+	opt_tty="-t -t"
+  fi #--bash
+  test $help && echo "    -t, --term:            send command to terminal as standard input"
+
+  if [ "$npar" == "-l" -o "$npar" == "--line" ]; then
+	prm_readline=1
+	prm_mode2=1
+  fi #--line
+  test $help && echo "    -l, --line:            use line input mode 2 (testing)"
+
+  if [ "$npar" == "-p" -o "$npar" == "--plain" ]; then
+        prm_smartout=0
+  fi #--plain
+  test $help && echo "    -p, --plain:           plain output mode; no grouping"
+ 
+  if [ "$npar" == "-s" -o "$npar" == "--su" ]; then
+	prm_su=1
+  fi #--su
+  test $help && echo "    -s, --su:              run command as super user"
+ 
+  if [ "$npar" == "-X" -o "$npar" == "--X11" ]; then
+	prm_x11=1
+  fi #--X11
+  test $help && echo "    -X, --X11:             enable X11 forwarding"
+ 
+  if [ "$npar" == "-e" -o "$npar" == "--expect" ]; then
+	prm_expect=1
+	prm_filter=1
+	prm_readline=""
+	opt_tty="-t -t"
+  fi #--expect
+  test $help && echo "    -e, --expect:          enable #expect# input commands"
+
+  if [ "$npar" == "-z" -o "$npar" == "--suppress" ]; then
+  	prm_suppress=1
+	opt_suppress="-s "
+  fi #--suppress
+  test $help && echo "    -z, --suppress:        suppress input echoing"
+ 
+
+##
+  test $help && echo ""
+  test $help && echo "Multi-character switches:"
+ 
+  if [ "$npar" == "--uninstall" ]; then
+	prm_uninstall=1
+  fi #--uninstall
+  test $help && echo "    --uninstall:           register command for uninstalling"
+
+  if [ "$npar" == "--autogen" ]; then
+	prm_autogen=1
+  fi #--autogen
+  test $help && echo "    --autogen:             generate expect script for installation"
+
+  if [ "$npar" == "--localhost" ]; then
+	prm_localhost=1
+  fi #--localhost
+  test $help && echo "    --localhost:           run only on localhost"
+  
+  if [ "$npar" == "--user" ]; then
+	prm_users=1
+  fi #--user
+  test $help && echo "    --user:                run for forest-user on localhost"
+  
+  if [ "$npar" == "--hostuser" ]; then
+	prm_hostusers=1
+	prm_users=1
+  fi #--hostuser
+  test $help && echo "    --hostuser:            run for forest-user on \$\(hostname\)"
+
+  if [ "$npar" == "--entry" ]; then
+	shift
+	if [ "$1" == "" -o "${1:0:1}" == "-" ]; then
+		echo "Expected entry id."
+		exit 1
+	fi
+	prm_entry=1
+	entryid="$1"
+  fi
+  
+
+##
+  test $help && echo ""
+  test $help && echo "Package-related switches:"
+
+  if [ "$npar" == "--package" ]; then
+	shift
+	if [ "$1" == "" -o "${1:0:1}" == "-" ]; then
+		echo "Expected package name for parameter $npar."
+		exit 1
+	fi
+	package="$1"
+  fi #--package
+  test $help && echo "    --package PKG:         select package, default: node"
+
+  if [ "$npar" == "--create-package" ]; then
+	shift
+	if [ "$1" == "" -o "${1:0:1}" == "-" ]; then
+		echo "Expected package name for parameter $npar."
+		exit 1
+	fi
+	package="$1"
+	forest -s --package root --install touch /etc/forest/$package
+	forest -s --package root --install touch /etc/forest/install/$package
+	forest -s --package root --install touch /etc/forest/uninstall/$package
+  fi #--create-package
+  test $help && echo "    --create-package PKG:  create a new package"
+
+  if [ "$npar" == "--add-package" ]; then
+	shift
+	if [ "$1" == "" -o "${1:0:1}" == "-" ]; then
+		echo "Expected package name for parameter $npar."
+		exit 1
+	fi
+	package="$1"
+	if ! grep >/dev/null -R \$$(hostname)\^ /etc/forest/$package
+	then
+		echo "Adding package $package to $(hostname)."
+		forest -s --package root --install 'echo "'"$(hostname)"'" >> /etc/forest/'"$package"
+	else
+		echo "Package $package is already asigned to $(hostname)."
+	fi
+  fi #--add-package
+  test $help && echo "    --add-package PKG:     add a package to the current host"
+
+
+ 
+
+  if [ "$spar" == "-" ]; then shift; fi
+  test $help && echo "" && exit 0
+done
+
+if [ $# -eq 0 ]; then 
+	set - bash -s 
+fi
+
+#end of param gathering
+
+
+#section install
+if test "$prm_install"; then
+	entryid=$(wc ~/.forest/install -l 2>/dev/null | awk '{print $1 + 1}')
+	if [ "$entryid" == "" ]; then 
+		entryid=1; 
+		touch ~/.forest/install
+	fi
+	prm_entry=1
+fi
+
+
+#preprocessing
+
+if test $prm_readline; then opt_readline="-e"; else opt_readline=""; fi
+test $prm_x11 && opt_x11="-X";
+
+stdinfiles="-"
+
+
+
+#  node preprocessing
+nodes=$(sed -e 's/#.*$//' -e '/^$/d' /etc/forest/$package)
+
+if test "$prm_localhost"; then
+  nodes=$(hostname)
+elif test "$prm_users"; then
+  nodes=$(
+  cat /etc/passwd | awk -F ':' '{print $1}' | 
+  while read x; do grep "forest-user" <(groups $x) | awk '{print $1}'; done )
+elif test "$prm_rest"; then
+  nodes=$(echo "$nodes" | sed -e "s/$(hostname)//g")
+fi
+
+#  entry preprocessing
+if test "$entryid"; then
+  nd=$nodes
+  entryidc="$entryid";
+  op="-gt"
+  test "$prm_install" && {
+    op="-eq";
+    entryidc=$(cat ~/.forest/install | grep '<<FORESTINSTEOP' | tail -n 1 | awk -F"--entry" '{print $2}' | awk '{print $1}')
+    test "$entryidc" || entryidc=0
+  }
+  nodes=
+  for i in $nd; do
+    test -f ~/.forest/install-node/$i || printf "0" > ~/.forest/install-node/$i
+    if [ "$entryidc" $op "$(cat ~/.forest/install-node/$i)" ]; then
+      nodes=$(printf "%s\n%s" "$nodes" "$i")
+    fi
+  done
+  if [ "$nodes" == "" ]; then exit 0; fi
+  nodes=${nodes:1} #remove initial newline
+  echo "Installing script $entryid @"$nodes.
+fi
+
+
+
+#starting operations
+
+dir=$(mktemp -d /tmp/forest-XXXXXXX)
+
+
+fifosin=$(for i in $nodes; do echo $dir/$i.in; done)
+mkfifo $fifosin
+fifos=$(for i in $nodes; do echo $dir/$i; done)
+mkfifo $fifos
+outfifos=$(for i in $nodes; do echo $dir/$i.out; done)
+mkfifo $outfifos
+outfifos1=$(for i in $nodes; do echo $dir/$i.out1; done)
+test $prm_filter && mkfifo $outfifos1
+errfifos=$(for i in $nodes; do echo $dir/$i.err; done)
+mkfifo $errfifos
+insfifos=$(for i in $nodes; do echo $dir/$i.ins; done)
+mkfifo $insfifos
+kilfifos=$(for i in $nodes; do echo $dir/$i.kil; done)
+mkfifo $kilfifos
+
+mkfifo $dir/test.stdout $dir/test.stderr $dir/test.stdin
+
+runfis=$(for i in $nodes; do echo $dir/$i.run; done)
+touch $runfis $dir/test.anyrun
+
+
+# section install proc
+
+singlesc() {
+printf "%s" "$1" | sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/";
+}
+if test "$prm_install"; then
+	(
+	printf "cd %s ; n=\$1; test \"\$n\" == \"\" && n=0 ; test \$n -lt $entryid && forest --entry $entryid" "$(pwd)"
+
+	for i in "${cmdline[@]}"; do
+		if test "$i" == "--autogen"; then i="--expect"; fi
+		printf " %s" $(singlesc "$i")
+
+	done
+
+	printf "<<FORESTINSTEOP\n"
+
+	) > $dir/test.install
+	#exit 0
+fi
+
+
+
+
+vset() { v="$@"; }
+
+# total watchdog
+tepid=$$
+tepidb=$$
+( for i in $nodes; do 
+	( 
+		( read x; rm $dir/$i.run; echo "$x"; ) < $dir/$i.ins
+	) &
+done | while read x
+do
+	vset $dir/*.run;
+	if [ "$v" == "$dir/*.run" ]; then 
+		rm $dir/test.anyrun
+		for j in $nodes; do echo q > $dir/$j.kil; done
+    		test ! "$prm_suppress" && tepid=$(echo $(ps h --ppid $tepid -o pid,fname | grep cat) | awk '{print $1}')
+    		test "$prm_suppress" && tepid=$(echo $(ps h --ppid $tepid -o pid,fname | grep cat) | awk '{print $1}')
+		if [ "$tepid" != "" ]; then 
+			kill -SIGINT $tepid; 
+		fi
+    		tepid=$(echo $(ps h --ppid $tepidb -o pid,fname | grep bash) | awk '{print $1}')
+		if [ "$tepid" != "" ]; then 
+			kill -SIGINT $tepid; 
+		fi
+		break;
+	fi
+done ) &
+
+
+# about to start instances
+pids=""
+
+enfail() { if test -f $dir/$1.failed; then return; fi; echo "forest: Failed to start $1!" >&2; echo failed > $dir/$1.failed; }
+stopfail() { echo stopfailed > $dir/$1.failed; }
+enend() { 
+	#echo "forest: Finished $i!" > /dev/stderr; 
+	echo "" > $dir/$i.done
+	echo "q" > $dir/$i.ins; cat $dir/$i.kil >/dev/null; 
+
+	# entry code
+	if test "$prm_entry"; then
+		if ! test -f $dir/$i.failed ; then
+			echo "$entryid" > ~/.forest/install-node/$i
+			echo ok > $dir/success.install
+		fi
+	fi;
+}
+sppidsave() {
+echo $BASHPID>$dir/$i.sppid;
+}
+
+for i in $nodes ; do 
+(
+if test $prm_localhost; then
+  #( bash -i || enfail $1 ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+  ( sppidsave; ssh $opt_x11 $opt_tty $i cd $(pwd) \; $@ || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+
+elif test $prm_hostusers; then
+  ( sppidsave; sudo su $i -c "ssh "$(hostname)" '$@'" || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+
+elif test $prm_users; then
+  ( sppidsave; sudo su $i -c "ssh localhost '$@'" || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+
+elif test $prm_bash; then
+  ( sppidsave; ssh $opt_x11 $opt_tty $i || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+else
+#elif test $prm_interactive; then
+  test "$debug" || ( sppidsave; ssh $opt_x11 $opt_tty $i cd $(pwd) \; $@ || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out 2>$dir/$i.err
+  test "$debug" && ( sppidsave; ssh $opt_x11 $opt_tty $i cd $(pwd) \; $@ || enfail $i ; enend $i ) < $dir/$i.in >$dir/$i.out #2>$dir/$i.err
+fi
+test "$debug2" && printf "dbg: ssh pid $BASHPID\n" >&2
+) &
+shpid="$!"
+echo $shpid >$dir/$i.pid
+pids="$pids $shpid"
+done
+
+# instances started
+
+
+# helpers
+#trail()  { r=$(seq 0 ${#1}); for i in $r; do if [ "${1:$i:1}" == " " ]; then break; fi; done; r="${1:$((i+1))}"; h="${1:0:$i}"; }
+trail()  { read -d ' ' -r x <<< "$1"; i=${#x}; r="${1:$((i+1))}"; h="${1:0:$i}"; }
+
+#trail2() { r=$(seq 0 ${#1}); for i in $r; do if [ "${1:$i:1}" == " " ]; then break; fi; done; r="${1:$((i+2))}"; test "${1:$((i+1)):1}" == "n" && r="$r"$'\n'; h="${1:0:$i}"; }
+#trail3() { trail2 "$1"; r="$h $r"; }
+trail2() { read -d ' ' -r t0x <<< "$1"; i=${#t0x}; r="${1:$((i+2))}"; h="${1:0:$i}"; test "${1:$((i+1)):1}" == "n" && r="$r"$'\n'; }
+trail3() { trail2 "$1"; r="$h $r"; }
+
+
+gcount() { c=$#; }
+
+# output per node
+streampn() {
+	while read -r x; do 
+		test "$debug2" && printf "dbg: on streampn %s\n" "$x" >&2
+		printf "$1" "$x"; 
+	done
+}
+streampn2x() {
+		test "$debug2" && printf "dbg: 2x $i started.\n" >&2
+	IFS=$'\n'
+	while read -r -n 1 x; do
+		if [ "$x" == "" ]; then printf "$1" "n" ""; continue; fi
+		while read -r -n 1 -t 0.4 y; do
+			x="$x$y"
+			if [ "$y" == "" ]; then printf "$1" "n" "$x"; x=""; break; fi
+		done
+		if [ "$x" == "" ]; then continue; fi
+		printf "$1" "c" "$x"
+	done
+		test "$debug2" && printf "dbg: 2x $i stopped.\n" >&2
+}
+streamchkauto() {
+	if test -f $dir/$2.instlast; then
+		printf "\n" | cat $dir/$2.instlast - >> $dir/test.ofinstlast
+		printf "\n" | cat $dir/$2.instlast8 - >> $dir/test.ofinstlast8
+	fi
+	printf "%s" "$1" > $dir/$2.instlast
+	printf "%s" "$1" | tail -c 8 > $dir/$2.instlast8
+}
+streampn2xauto() {
+	IFS=$'\n'
+	while read -r -n 1 x; do
+		if [ "$x" == "" ]; then printf "$1" "n" ""; continue; fi
+		while read -r -n 1 -t 0.4 y; do
+			x="$x$y"
+			if [ "$y" == "" ]; then 
+				streamchkauto "$x" "$2"
+				printf "$1" "n" "$x"; x=""; break; 
+			fi
+		done
+		if [ "$x" == "" ]; then continue; fi
+		streamchkauto "$x" "$2"
+		printf "$1" "c" "$x"
+	done
+}
+testtiming() {
+	if test "$timing"; then
+		n=$(date +%s)
+		w=$(cat $dir/test.expecttime)
+		d=$(( $n - $w ))
+		if [ $d -gt $timeout ]; then
+			echo "Expect timed out!" >&2
+			x=""
+			timing=""
+			timeswitch=""
+			fid=$((fid+1))
+		fi
+	fi;
+}
+shexit() {
+	shpid=$(cat $dir/$ii.sppid)
+	shpid=$(ps h --ppid $shpid -o pid,fname | grep ssh | awk '{print $1}')
+	stopfail $ii
+	kill -SIGINT $shpid # should give time?
+	kill -SIGTERM $shpid
+	echo "Terminated $ii." >&2
+	break;
+}
+streampnf() {
+	#dbg: echo Hello world >/dev/stderr
+	#exit
+	ii=$1
+	IFS=$'\r\n';
+	fid=0
+	fs=${#inputs[@]}
+	x=""
+	timing=""
+	timeout=0
+	timeswitch=""
+	test "$debug2" && printf "dbg: started\n" >&2
+	while [ $fid -lt $fs ]
+	do
+		test "$debug2" && printf "dbg: looped\n" >&2
+		if test "$x"; then
+			if ! read -r -n 1 $timeswitch y; then 
+				if test "$timing"; then
+					if test -f $dir/$1.done; then break; fi
+					sleep 1
+					if test -f $dir/$1.done; then break; fi
+					testtiming 
+					if test "$x"; then
+						break # not a timeout, file end
+					fi
+				else
+					break
+				fi
+			fi
+			
+			z=""
+			test "$y" && while read -r -t 0.4 -n 1 z; do if [ "$z" != "" ]; then y="$y$z"; else testtiming; break; fi; done
+			testtiming
+			test "$x" || continue
+
+			# output for display
+			printf "%s" "$y" >&2
+			test "$z" || printf "\n" >&2
+			
+			# check for x-phrase in $y
+			if [[ "$y" =~ "$xphrase" ]]; then
+			#if [[ "$xphrase" =~ "$y" ]]; then
+				#dbg: 
+				#printf "%s" "$y" >&2
+
+				printf "Expectation met: %s\n" "$y" >&2
+
+				#printf "%s" "$xphrase" >&2
+
+				if test "$timing"; then
+					while [ $fid -lt $fs -a "${inputs[$fid]}" != "#found#" ] ; do fid=$((fid+1)); done
+					if [ $fid -eq $fs ]; then
+						printf "Script error! Missing #found#\n";
+						break;
+					fi
+				fi
+				timing=""
+				timeswitch="" 
+				x=""
+				fid=$((fid+1))
+			else
+				testtiming
+			fi
+			continue;
+		fi
+		line="${inputs[$fid]}"
+		if [ "${line:0:8}" == "#expect#" ]; then
+			xphrase="${line:8}"
+			#dbg: 
+			echo "Expecting...$xphrase" >&2
+			fidp=$((fid+1))
+			nexti="${inputs[$fidp]}"
+			if [ "${nexti:0:9}" == "#timeout#" ]; then
+				fid=$fidp
+				echo $(date +%s) > $dir/test.expecttime
+				timing="1"
+				timeout="${nexti:9}"
+				timeswitch="-t$timeout"
+			fi
+			x=1
+			continue
+		fi
+		if [ "${line:0:5}" == "#cmd#" ]; then
+			cmd="${line:5}"
+			fid=$((fid+1))
+			eval $cmd
+			continue
+		fi
+		if [ "$line" == "#found#" ]; then
+			while [ $fid -lt $fs -a "${inputs[$fid]}" != "#expend#" ] ; do fid=$((fid+1)); done
+			if [ $fid -eq $fs ]; then
+				printf "Script error! Missing #expend#\n";
+				break
+			fi
+			fid=$((fid+1))
+			continue
+		fi
+		if [ "$line" == "#expend#" ]; then
+			fid=$((fid+1))
+			continue
+		fi
+
+		printf "%s\n" "$line"
+		fid=$((fid+1))
+	done
+
+	#output remaining for display
+	echo ''
+	echo 'exit'
+
+	test "$debug2" && printf "dbg: ending script\n" >&2
+	streampn "%s\n" >&2
+
+
+	#IFS=$'\r\n' rest=($(cat)) # read all standard input to array
+}
+streampnfn() {
+	aaa="bbb"
+	#printf "%s\n" "${rest[@]}"
+}
+
+# autogen save times
+d=$(date +%s)
+echo $(( $d - 5 )) > $dir/test.autotime
+
+
+for i in $nodes; do
+  (
+	test "$prm_mode2" -a ! "$prm_autogen" && streampn2x "\\e[1;37m$i:\\e[0m %c%s\\n" "$i" < $dir/$i.out$prm_filter >$dir/test.stdout &
+	test "$debug" || ( test "$prm_mode2" -a ! "$prm_autogen" && streampn2x "\\e[1;31m$i:\\e[0m %c%s\\n" "$i" < $dir/$i.err >$dir/test.stderr & )
+
+	test "$prm_mode2" -a "$prm_autogen" && streampn2xauto "\\e[1;37m$i:\\e[0m %c%s\\n" "$i" < $dir/$i.out$prm_filter >$dir/test.stdout &
+	test "$prm_mode2" -a "$prm_autogen" && streampn2xauto "\\e[1;31m$i:\\e[0m %c%s\\n" "$i" < $dir/$i.err >$dir/test.stderr &
+
+	test ! "$prm_mode2" && streampn "\\e[1;37m$i:\\e[0m n%s\\n" "$i" < $dir/$i.out$prm_filter >$dir/test.stdout &
+	test ! "$prm_mode2" && streampn "\\e[1;31m$i:\\e[0m n%s\\n" "$i" < $dir/$i.err >$dir/test.stderr &
+
+	
+	#cat $dir/$i.out &
+	#cat $dir/$i.err &
+  )
+done
+
+
+
+gather() {
+	[ ${#buf[@]} -eq 0 ] && return 1;
+	eval $1='"${buf[0]}"'
+	unset buf[0];
+	buf=("${buf[@]}");
+	return 0;
+}
+
+
+streamg() {
+  while read -r x; do
+    #printf "%s" "$x"
+    trail2 "$x"
+    printf "%s %s" "$h" "$r"
+  done
+}
+
+# gather output
+streamg2() {
+ignorelim=24
+test "$debug2" && printf "dbg: streamg2 pid $BASHPID\n" >&2
+nord=0
+nots=0
+nolp=0
+buf=()
+while test 1
+do
+  if [ $nord == 0 ]; then 
+	#if test $1 -eq 1 -a $prm_readline -eq 1; then printf "$ "; fi
+	#test $prm_readline && printf "forest# \n";
+	gather x || { gcount $dir/*.run ; bmax=$(( $c * 15 )) ; read -r x || break; }
+  fi
+  nord=0
+  if [ $nots == 1 ]; then nots=0; trail3 "$x"; printf "%s" "$r"; if [ $nolp == 1 ]; then nord=1; nolp=0; x="$y"; fi; continue; fi
+	#printf "dbg: pre2:trailing $c for %s:%s with %s:%s\n." "$he" "$tr" "$h" "$r" >&2
+  trail2 "$x" ; 
+
+  tr="$r"
+  he="$h"
+  q=1;
+  bsize=${#buf[@]}
+  bufs=();
+  ignore=0
+
+  while [ $q -lt $c ]; do
+	#printf "dbg: pre:trailing for %s:%s with %s:%s\n." "$he" "$tr" "$h" "$r" >&2
+   
+    if ! gather y && ! read -r -t 0.4 y; then nord=1; nots=1; if test $q -eq 1; then break; fi; fi
+
+    trail2 "$y"  
+	#printf "dbg: trailing for %s:%s with %s:%s\n." "$he" "$tr" "$h" "$r" >&2
+    test "1" -a "$h" -a "$y" && [[ " $he " =~ " $h " ]] && { # advanced buffering
+      #printf "dbg: adding %s:%s because of %s\n" "$h" "$r" "$he" >&2
+      bufs+=("$y");
+      ignore=$(($ignore + 1))
+      if [ $ignore -ge $(($ignorelim * $q)) ] ; then
+        ignore=0; y=${bufs[0]} ; unset bufs[0]; trail2 "$y";
+      else
+        continue; 
+      fi
+    } #
+    ignore=0
+
+    if [ $nord -eq 0 -a "$r" != "$tr" ]; then 
+      if [ $q == 1 ]; then nord=1; nots=1; nolp=1; break; fi
+      nord=1; x="$y"; nolp=0; 
+    fi 
+      
+    if test $nord -eq 1; then
+      printf "%s %s" "$he" "$tr"
+      x="$y"; test "$y" || nord=0; nolp=0; break;
+    fi
+  
+    he="$he $h"
+
+    q=$((q+1));
+  done
+	#for pi in $(seq 1 ${#bufs[@]}); do echo "pre[$pi]=${bufs[$pi]}" >&2; done
+ 
+  #concat
+  #buf=( "${buf[@]}" "${bufs[@]}" )
+  buf=( "${bufs[@]}" "${buf[@]}" )
+ 
+	#for pi in $(seq 0 ${#buf[@]}); do echo "post[$pi]=${buf[$pi]}" >&2; done
+  if [ $q -lt $c ]; then continue; fi
+  if [ $c -eq 1 ]; then nord=1; nots=1; continue; fi
+
+  #trail "$x" 
+  printf "$2" "$r"
+
+  
+		test "$debug2" && printf "dbg: streamg2 runs.\n" >&2
+
+  #printf "%s\n" "$x"
+done
+		test "$debug2" && printf "dbg: streamg2 stopped.\n" >&2
+}
+
+# run on outputs
+if test $prm_smartout -eq 1; then
+streamg2 1 "\\e[1;34mall:\\e[0m %s" <$dir/test.stdout & echo $! >$dir/test.soutpid
+test "$debug" || streamg2 0 "\\e[1;31mall:\\e[0m %s" <$dir/test.stderr >&2 & echo $! >$dir/test.serrpid
+else
+streamg 1 "" <$dir/test.stdout & echo $! >$dir/test.soutpid
+streamg 1 "" <$dir/test.stderr >&2 & echo $! >$dir/test.serrpid
+#cat $dir/test.stdout & echo $! >$dir/test.soutpid
+#cat $dir/test.stderr >&2 & echo $! >$dir/test.serrpid
+fi
+
+
+# autogenerator
+depatternize() {
+	sed -e 's/[]\/()$*.^|[]/\\&/g'
+}
+autotime() {
+	echo $(( 2 * $1 + 1 ))
+}
+autotimexp() {
+	echo $(( 3 * $1 + 10 ))
+}
+btime() {
+	n=$(date +%s)
+	w=$(cat $dir/test.autotime)
+	d=$(( $n - $w ))
+}
+autogen() {
+  while read -r x; do 
+	e=0
+
+	(
+	#POSIX compatibility: GNU diff used!
+  	if test "$e" == "0" && diff -q --from-file $dir/*.instlast8 >/dev/null 2>/dev/null; then
+#	cat $dir/*.instlast8 >&2
+		z=$(cat $(echo $dir/*.instlast8 | awk '{ print $1 }') )
+		sz=$(printf "%s" "$z" | sed -e 's/[]\/()$*.^|[]/\\&/g')
+		if ! grep "$sz" $dir/test.ofinstlast8 >/dev/null 2>/dev/null; then
+			printf "#expect#%s\n" "$sz"
+			e=1
+		fi
+	fi
+  	if test "$e" == "0" && diff -q --from-file $dir/*.instlast >/dev/null 2>/dev/null; then
+		z=$(cat $(echo $dir/*.instlast | awk '{ print $1 }') )
+		sz=$(printf "%s" "$z" | sed -e 's/[]\/()$*.^|[]/\\&/g')
+		if ! grep "$sz" $dir/test.ofinstlast >/dev/null 2>/dev/null; then
+			printf "#expect#%s\n" "$sz"
+			e=1
+		fi
+	fi
+	if test "$e" == "1"; then
+		btime
+		ct=$(autotimexp $d )
+		printf "#timeout#%s\n" "$ct"
+		printf "#cmd#shexit\n"
+		printf "#found#\n"
+		printf "#expend#\n"
+	fi
+	#else ... use timed control
+	if test "$e" == "0" ; then
+		btime
+		ct=$(autotime $d )
+		e=2
+		printf "#cmd#sleep %s\n" "$ct"
+	fi
+
+  	printf "%s\n" "$x"; 
+	) >> $dir/test.install
+
+	echo $(date +%s) > $dir/test.autotime
+
+  	printf "%s\n" "$x"; 
+  done
+}
+
+
+# input
+if test "$prm_filter"; then
+a=aa # no tea for this case
+elif test "$prm_install" -a "$prm_autogen"; then
+( autogen < $dir/test.stdin | tee $fifosin > /dev/null ) &
+elif test "$prm_install"; then
+( tee $fifosin < $dir/test.stdin >> $dir/test.install ) &
+elif test "$prm_suppress"; then
+( tee $fifosin < $dir/test.stdin > /dev/null ) &
+else
+( tee $fifosin < $dir/test.stdin ) &
+fi
+#if test $prm_readline; then
+#echo the good stuff
+#fi
+
+
+
+#tee $fifosin
+
+#( tee $fifosin < $dir/test.stdin ) &
+
+
+
+# exit operations
+waitforcleanup() {
+	test "$prm_suppress" && stty "$STTY_OLDCONFIG"
+
+	wait
+
+	wait $(cat $dir/test.soutpid) >/dev/null 2>/dev/null
+	wait $(cat $dir/test.serrpid) >/dev/null 2>/dev/null
+
+
+
+	if test "$prm_install" -a -f $dir/success.install ; then
+		(
+		cat "$dir/test.install"
+		test "$prm_autogen" && printf "\nexit\nexit\nexit\n"
+		printf "FORESTINSTEOP\n" 
+		) >> ~/.forest/install
+	fi
+
+	#remove temp dir
+	rm -rf "$dir"
+}
+
+cleanup() {
+	for i in $nodes; do
+		if ! test -f $dir/$i.done; then
+			shpid=$(cat $dir/$i.sppid)
+			shpid=$(ps h --ppid $shpid -o pid,fname | grep ssh | awk '{print $1}')
+			stopfail $i
+			echo "Terminated $i" >&2
+			kill -SIGINT $shpid # should give time? In that case parallelize
+			kill -SIGTERM $shpid
+			kill -SIGTERM $(cat $dir/test.soutpid)
+			kill -SIGTERM $(cat $dir/test.serrpid)
+		fi
+	done
+
+	waitforcleanup	
+}
+
+
+ctrlc() {
+	printf "Terminating children...\n";
+	cleanup
+	exit 1
+}
+
+
+# starting actually doing stuff
+
+STTY_OLDCONFIG=`stty -g`
+
+trap ctrlc SIGINT
+
+test "$prm_suppress" && stty -echo
+
+test ! "$prm_readline" -a ! "$prm_filter" && cat $stdinfiles >$dir/test.stdin
+
+#test $prm_readline -eq 1 && cat >$dir/test.stdin
+test "$prm_readline" -a ! "$prm_filter" && bash -c '
+	while read -r $opt_suppress -e x; 
+	do 
+		printf "%s\n" "$x"; 
+		echo "forest# ">&2; 
+	done
+' >$dir/test.stdin
+
+test "$prm_readline" -a 1 -eq 2 && ( echo bbbbbb >&2;
+ls $dir/test.anyrun >&2
+while test -f $dir/test.anyrun; do
+	if read -r $opt_suppress -e -t 0.2 x; then
+		printf "%s\n" "$x"
+		printf "forest# \n" >&2
+	fi
+done ; ls $dir/test.anyrun >&2; test -f $dir/test.anyrun && echo exist; echo fin >&2 )>$dir/test.stdin
+	
+#test $prm_readline -eq 1 && bash -c 'while test -f '"$dir/test.anyrun"' ; do if read -d'' -s -n 1 -t 1 -e x; then if [ "$x" == "" ]; then printf " "; elif [ "$x" == "" ]; then printf "\n"; else printf "%s" "$x"; fi; fi; done' >$dir/test.stdin 
+#test $prm_readline -eq 1 && bash -c 'while test -f '"$dir/test.anyrun"' ; do read -e x; do printf "%s\n" "$x"; echo "forest# " >/dev/stderr; done' >$dir/test.stdin
+
+test "$prm_filter" && {
+
+	#dbg: echo Reading all inputs
+
+	if test "$prm_install"; then
+		cat >$dir/test.install0
+		IFS=$'\r\n' inputs=($(cat "$dir/test.install0"))
+		cat $dir/test.install0 >> $dir/test.install
+	else
+		IFS=$'\r\n' inputs=($(cat)) # read all standard input to array, assuming it comes from a text file 
+	fi
+
+
+	#dbg: echo Read all inputs
+
+	# write both to input (test.stdin) for circular feedback and to output for visual display
+	for i in $nodes ; do 
+
+		#dbg: echo starting spf $i >/dev/stderr
+		#( streampnf > $dir/test.stdin 2> $dir/$i.out$prm_filter < $dir/$i.out ; streampn "%s\n" >/dev/stderr ) 2> $dir/$i.out$prm_filter &
+		#( streampnf > $dir/test.stdin 2> $dir/$i.out$prm_filter < $dir/$i.out ) &
+
+		#2014
+		#old:( streampnf > $dir/test.stdin < $dir/$i.out ; streampnfn ) 2> $dir/$i.out$prm_filter &
+		( streampnf "$i" > $dir/$i.in < $dir/$i.out ; streampnfn 
+			test "$debug2" && printf "dbg: filter $i stopped.\n" >&2
+
+		) 2> $dir/$i.out$prm_filter &
+		####
+
+		#streampnf > $dir/test.stdin 2>/dev/stdout < $dir/$i.out &
+	done
+
+
+}
+
+waitforcleanup
+
+if test $prm_bash; then
+echo Forest interactive shell exited.
+fi
+
