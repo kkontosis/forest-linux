@@ -1,0 +1,10 @@
+#!/bin/bash
+
+test "$1" == "--desc" && {
+	echo "	freeid		Get free uid, gid"
+	exit
+}
+
+forest -p /forest/etc/forest/var/getfreeid $1 | awk '{print $2}' | sort -rn | head -n 1
+
+

@@ -1,0 +1,5 @@
+forest -i <<EOP
+sudo sed -i -e 's/^ignoreip\ =\ /ignoreip = 192.168.2.1\/8 /g' /etc/fail2ban/jail.conf
+exit
+exit
+EOP

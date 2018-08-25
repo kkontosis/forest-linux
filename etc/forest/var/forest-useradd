@@ -1,0 +1,10 @@
+if [ "$1" == "" ]
+then
+exit
+fi
+
+bash /etc/forest/var/useradd/root $1
+sudo su $1 -c /etc/forest/var/useradd/current
+
+echo done
+

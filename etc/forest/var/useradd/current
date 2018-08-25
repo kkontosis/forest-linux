@@ -1,0 +1,9 @@
+# Custom script to run by the user after they get created
+
+ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+for x in $(grep -v \# /etc/forest/node) ; do ssh -o "StrictHostKeyChecking no" $x hostname; done
+ssh -o "StrictHostKeyChecking no" localhost hostname
+/forest/bin/forest ssh -o '"StrictHostKeyChecking no"' $(hostname) echo from $(hostname)
+
+
