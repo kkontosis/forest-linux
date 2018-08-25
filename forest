@@ -16,6 +16,15 @@ prm_mode2=1
 
 spar="-"
 
+mklocalconfig() {
+	test -d ~/.forest || (
+		mkdir -p ~/.forest
+		mkdir -p ~/.forest/install-node
+		touch ~/.forest/install
+	)
+}
+
+
 while [ $# -gt 0 -a "${1:0:1}" == "-" ]
 do
 
@@ -870,13 +879,6 @@ ctrlc() {
 	exit 1
 }
 
-mklocalconfig() {
-	test -d ~/.forest || (
-		mkdir -p ~/.forest
-		mkdir -p ~/.forest/install-node
-		touch ~/.forest/install
-	)
-}
 
 
 # starting actually doing stuff
