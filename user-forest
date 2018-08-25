@@ -1,0 +1,16 @@
+#!/bin/bash
+
+if [ -f /etc/forest/scripts/"$1" ]
+then
+	p="$1"
+	shift
+	/etc/forest/scripts/"$p" $@
+else
+	echo "forest-linux, Copyright (c) Kimon M. Kontosis 2013-2014, license GPL v.3.0+"
+	echo "user-forest runs a forest-linux script across all nodes of a computer cluster"
+	echo "Usage: user-forest <script-name> [OPTION...]"
+	echo ""
+	echo "Installed scripts:"
+	for x in /etc/forest/scripts/* ; do $x --desc ; done
+	echo ""
+fi
