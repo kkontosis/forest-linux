@@ -207,6 +207,8 @@ fi
 
 #section install
 if test "$prm_install"; then
+	mklocalconfig
+
 	entryid=$(wc ~/.forest/install -l 2>/dev/null | awk '{print $1 + 1}')
 	if [ "$entryid" == "" ]; then 
 		entryid=1; 
@@ -240,6 +242,8 @@ fi
 
 #  entry preprocessing
 if test "$entryid"; then
+  mklocalconfig
+
   nd=$nodes
   entryidc="$entryid";
   op="-gt"
@@ -353,6 +357,8 @@ enend() {
 
 	# entry code
 	if test "$prm_entry"; then
+		mklocalconfig
+
 		if ! test -f $dir/$i.failed ; then
 			echo "$entryid" > ~/.forest/install-node/$i
 			echo ok > $dir/success.install
@@ -828,6 +834,8 @@ waitforcleanup() {
 
 	if test "$prm_install" -a -f $dir/success.install ; then
 		(
+		mklocalconfig
+
 		cat "$dir/test.install"
 		test "$prm_autogen" && printf "\nexit\nexit\nexit\n"
 		printf "FORESTINSTEOP\n" 
@@ -860,6 +868,14 @@ ctrlc() {
 	printf "Terminating children...\n";
 	cleanup
 	exit 1
+}
+
+mklocalconfig() {
+	test -d ~/.forest || (
+		mkdir -p ~/.forest
+		mkdir -p ~/.forest/install-node
+		touch ~/.forest/install
+	)
 }
 
 
