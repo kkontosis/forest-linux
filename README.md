@@ -1,8 +1,8 @@
 # forest-linux
 A linux utility that runs a command on multiple machines via ssh (with various terminal redirection capabilities).
-Option to run interactive commands with/without hidden input, e.g. change a password for a user across many nodes.
-Includes a customizeable of scripts that run a series of interactive operations on the host machines automatically, e.g. user creation.
-Experimental ability to run a command asynchronously, at first boot, if one or more machines are down or fail to execute the given command.
+- Option to run interactive commands with/without hidden input, e.g. change a password for a user across many nodes.
+- Includes a customizeable of scripts that run a series of interactive operations on the host machines automatically, e.g. user creation.
+- Experimental ability to run a command asynchronously, at first boot, if one or more machines are down or fail to execute the given command.
 
 
 ## Example
