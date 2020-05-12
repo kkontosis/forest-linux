@@ -1,5 +1,5 @@
 # forest-linux
-A linux utility that runs a command on multiple machines via ssh (with various terminal options)
+A linux utility that runs a command on multiple machines via ssh (with various terminal redirection capabilities)
 
 ## Example
 
